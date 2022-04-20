@@ -1,5 +1,28 @@
 package sp.service.sample
 
+import sp.kx.sip.foundation.entity.AuthorizationDigest
+import sp.kx.sip.foundation.entity.NetworkAddress
+import sp.kx.sip.foundation.entity.SipAuthenticate
+import sp.kx.sip.foundation.entity.SipUser
+import sp.kx.sip.foundation.entity.TransportProtocol
+import sp.kx.sip.foundation.entity.Via
+import sp.kx.sip.foundation.entity.request.SipRequestBuilder
+import sp.kx.sip.foundation.entity.request.SipRequestRegister
+import sp.kx.sip.foundation.entity.request.by
+import sp.kx.sip.foundation.entity.request.contact
+import sp.kx.sip.foundation.entity.request.from
+import sp.kx.sip.foundation.entity.request.getVia
+import sp.kx.sip.foundation.entity.request.to
+import sp.kx.sip.foundation.entity.request.via
+import sp.kx.sip.foundation.entity.response.SipAbstractResponse
+import sp.kx.sip.implementation.entity.address
+import sp.kx.sip.implementation.entity.sipUser
+import sp.kx.sip.implementation.util.digest
+import sp.kx.sip.implementation.util.notation
+import sp.kx.sip.implementation.util.requireHeader
+import sp.kx.sip.implementation.util.toAuthenticate
+import sp.kx.sip.implementation.util.toSipResponse
+import sp.kx.sip.implementation.util.toVia
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
@@ -7,27 +30,28 @@ import java.net.InetAddress
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.pow
 
-fun DatagramSocket.send(
-	host: String,
-	port: Int,
-	buffer: ByteArray,
-	offset: Int = 0,
-	length: Int = buffer.size
-) {
-	val packet = DatagramPacket(buffer, offset, length, InetAddress.getByName(host), port)
+private var packet: DatagramPacket? = null
+
+private fun DatagramSocket.send(data: ByteArray) {
+	val packet = requireNotNull(packet)
+	packet.data = data
 	send(packet)
 }
 
-fun DatagramSocket.receive(
-	buffer: ByteArray,
-	offset: Int = 0,
-	length: Int = buffer.size
-): DatagramPacket {
-	val result = DatagramPacket(buffer, offset ,length)
-	receive(result)
-	return result
+private infix fun DatagramSocket.send(data: String) {
+	println("\t-->\n$data")
+	send(data.toByteArray(Charsets.UTF_8))
+}
+
+fun DatagramSocket.receive(buffer: ByteArray): DatagramPacket {
+	val packet = requireNotNull(packet)
+	packet.data = buffer
+	receive(packet)
+	return packet
 }
 
 fun DatagramSocket.receive(size: Int = 1024): DatagramPacket {
@@ -40,42 +64,6 @@ private fun getHostAddress(): String {
 		.filterIsInstance<Inet4Address>()
 		.filterNot { it.isLoopbackAddress }
 		.single().hostAddress
-}
-
-private fun ByteArray.toHexString(): String {
-	val chars = "0123456789abcdef"
-	val builder = StringBuilder(size * 2)
-	forEach {
-		val i = it.toInt()
-		builder
-			.append(chars[i shr 4 and 0x0f])
-			.append(chars[i and 0x0f])
-	}
-	return builder.toString()
-}
-
-private fun getAuthorizationDigest(
-	algorithm: String,
-	uri: String,
-	realm: String,
-	nonce: String,
-	method: String,
-	name: String,
-	password: String
-): String {
-	val result = mutableMapOf(
-		"username" to name,
-		"realm" to realm,
-		"nonce" to nonce,
-		"uri" to uri
-	)
-	val uDigest = MessageDigest.getInstance(algorithm).digest(
-		"$name:$realm:$password".toByteArray(Charsets.UTF_8)
-	).toHexString()
-	val mDigest = MessageDigest.getInstance(algorithm).digest(
-		"$method:$uri".toByteArray(Charsets.UTF_8)
-	).toHexString()
-	TODO()
 }
 
 private fun Int.toTwoBytes(): ByteArray {
@@ -143,52 +131,211 @@ fun ByteArray.getMappedAddress(): Pair<String, Int> {
 	TODO()
 }
 
+private infix fun DatagramSocket.request(request: String): SipAbstractResponse {
+	println("\t-->\n$request")
+	send(data = request.toByteArray(Charsets.UTF_8))
+	val response = String(receive().data)
+	println("\t<--\n$response")
+	return response.toSipResponse()
+}
+
+private fun process(
+	socket: DatagramSocket,
+	rAddress: NetworkAddress,
+	fUser: SipUser,
+	password: String
+) {
+	val version = "2.0"
+	val protocol = TransportProtocol.UDP
+	val via = Via(
+		version = version,
+		protocol = protocol,
+		address = address(host = getHostAddress(), port = socket.localPort),
+		branch = "z9hG4bK" + UUID.randomUUID().toString()
+	)
+	val callId = UUID.randomUUID().toString()
+	var number = 0
+	val method = "REGISTER"
+	val tag = UUID.randomUUID().toString()
+	val authenticate = SipRequestBuilder(method = method, version = via.version, address = rAddress).build {
+		by(via)
+		addHeader(key = "Call-ID", value = callId)
+		addHeader(key = "CSeq", value = "${++number} $method")
+		from(user = fUser, host = rAddress.host, tag = tag)
+		to(user = fUser, host = rAddress.host)
+		contact(user = fUser, address = via.address)
+	}.let { request ->
+		socket.send(request)
+		val response = socket.receive(via)
+		when (response.top.code) {
+			401 -> response.requireHeader("WWW-Authenticate").toAuthenticate()
+			else -> error("Unknown code ${response.top.code}")
+		}
+	}
+	val digest = authenticate.digest(
+		uri = "sip:${rAddress.notation()}",
+		method = method,
+		name = fUser.name,
+		password = password
+	)
+	SipRequestBuilder(method = method, version = via.version, address = rAddress).build {
+		by(via)
+		addHeader(key = "Call-ID", value = callId)
+		addHeader(key = "CSeq", value = "${++number} $method")
+		from(user = fUser, host = rAddress.host, tag = tag)
+		to(user = fUser, host = rAddress.host)
+		contact(user = fUser, address = via.address)
+		by(digest)
+	}.let { request ->
+		socket.send(request)
+		val response = socket.receive(via)
+		when (response.top.code) {
+			200 -> TODO()
+			else -> error("Unknown code ${response.top.code}")
+		}
+	}
+}
+
+private fun register(
+	socket: DatagramSocket,
+	via: Via,
+	callId: String,
+	number: Int,
+	rAddress: NetworkAddress,
+	fUser: SipUser,
+	digest: String
+): SipAbstractResponse {
+	val method = "REGISTER"
+//	val lAddress = address(host = getHostAddress(), port = socket.localPort)
+	val request = SipRequestBuilder(method = method, version = via.version, address = rAddress).build {
+		by(via)
+		addHeader(key = "Call-ID", value = callId)
+		addHeader(key = "CSeq", value = "$number $method")
+		from(user = fUser, host = rAddress.host, tag = UUID.randomUUID().toString())
+		to(user = fUser, host = rAddress.host)
+//		contact(user = fUser, address = lAddress)
+		addHeader(key = "Authorization", value = digest)
+	}
+	socket.send(request)
+	return socket.receive(via)
+}
+
+private fun register(
+	socket: DatagramSocket,
+	via: Via,
+	callId: String,
+	number: Int,
+	rAddress: NetworkAddress,
+	fUser: SipUser
+): SipAbstractResponse {
+	val method = "REGISTER"
+	val request = SipRequestBuilder(method = method, version = via.version, address = rAddress).build {
+		by(via)
+		addHeader(key = "Call-ID", value = callId)
+		addHeader(key = "CSeq", value = "$number $method")
+		from(user = fUser, host = rAddress.host, tag = UUID.randomUUID().toString())
+		to(user = fUser, host = rAddress.host)
+//		contact(user = fUser, address = lAddress)
+	}
+//	val request = SipRequestRegister(
+//		version = version,
+//		protocol = protocol,
+//		number = number,
+//		rAddress = rAddress,
+//		lAddress = address(host = getHostAddress(), port = socket.localPort),
+//		branch = "z9hG4bK" + UUID.randomUUID().toString(),
+//		callId = callId,
+//		user = fUser,
+//		tag = UUID.randomUUID().toString()
+//	)
+//	socket.send(request.toBody())
+	socket.send(request)
+	return socket.receive(via)
+}
+
+private fun DatagramSocket.receive(expected: Via): SipAbstractResponse {
+	while (true) {
+		val data = String(receive().data)
+		println("\t<--\n$data")
+		val response = data.toSipResponse()
+		val actual = response.requireHeader("Via").toVia()
+		if (actual == expected) return response
+	}
+}
+
+private fun register(
+	socket: DatagramSocket,
+	rAddress: NetworkAddress,
+	fUser: SipUser
+): SipAbstractResponse {
+	val lAddress = address(host = getHostAddress(), port = socket.localPort)
+	val version = "2.0"
+	val protocol = TransportProtocol.UDP
+	val number = 1
+	val branch = "z9hG4bK" + UUID.randomUUID().toString()
+	val callId = UUID.randomUUID().toString()
+	val tag = UUID.randomUUID().toString()
+	val request = SipRequestRegister(
+		version = version,
+		protocol = protocol,
+		number = number,
+		rAddress = rAddress,
+		lAddress = lAddress,
+		branch = branch,
+		callId = callId,
+		user = fUser,
+		tag = tag
+	)
+	socket.send(request.toBody())
+	while (true) {
+		val data = String(socket.receive().data)
+		println("\t<--\n$data")
+		val response = data.toSipResponse()
+		val via = response.requireHeader("Via").toVia()
+		if (via == request.getVia()) {
+			return response
+		}
+	}
+}
+
 fun main(args: Array<String>) {
 	val arguments = args.single().split(",").associate {
 		val array = it.split("=")
 		check(array.size == 2)
 		array[0] to array[1]
 	}
-	val rHost = arguments["rh"]!!
-	val rPort = arguments["rp"]!!.toInt()
+	val rAddress = address(host = arguments["rh"]!!, port = arguments["rp"]!!.toInt())
 	val fName = arguments["fn"]!!
 	val fPassword = arguments["fp"]!!
 	val tName = arguments["tn"]!!
-	val sServer = arguments["ss"]!!
-	DatagramSocket().use { socket ->
-		socket.soTimeout = 5_000
-		socket.connect(InetAddress.getByName(rHost), rPort)
-//		val buffer = ByteArray(20).also {
-//			val type = 0x0001
-//			System.arraycopy(type.toTwoBytes(), 0, it, 0, 2)
-//			System.arraycopy(0.toTwoBytes(), 0, it, 2, 2)
-//		}
-//		socket.send(host = sServer, port = 3478, buffer = buffer)
-//		val (lHost, lPort) = socket.receive().data.getMappedAddress()
-		val lHost = getHostAddress()
-		val lPort = socket.localPort
-		println("local host: $lHost")
-		println("local port: $lPort")
-		val number = 1
-		val version = "2.0"
-		val method = "REGISTER"
-		val branch = "z9hG4bK" + UUID.randomUUID().toString()
-		val callId = UUID.randomUUID().toString()
-		val tag = UUID.randomUUID().toString()
-		val request = """
-			$method sip:$rHost SIP/$version
-			Via: SIP/$version/UDP $lHost:$lPort;branch=$branch
-			Call-ID: $callId
-			CSeq: $number $method
-			To: sip:${fName}@${rHost}
-			From: sip:${fName}@${rHost};tag=$tag
-			Contact: sip:$fName@$lHost:$lPort
-		""".trimIndent().split("\n").joinToString(separator = "\r\n", postfix = "\r\n\r\n")
-		println("request:\n\t---\n$request\n\t---")
-		socket.send(host = rHost, port = rPort, buffer = request.toByteArray())
-		println("\nwait response...")
-		val response = String(socket.receive().data)
-		println("response:\n\t---\n$response\n\t---")
-		socket.disconnect()
+//	val sServer = arguments["ss"]!!
+	val executor = Executors.newFixedThreadPool(3)
+	val stop = AtomicBoolean(false)
+	executor.execute {
+		try {
+			DatagramSocket().use { socket ->
+				socket.soTimeout = 5_000
+				println("connect: ${rAddress.notation()}...")
+				packet = DatagramPacket(ByteArray(0), 0, 0, InetAddress.getByName(rAddress.host), rAddress.port)
+				socket.connect(InetAddress.getByName(rAddress.host), rAddress.port)
+				try {
+					process(
+						socket = socket,
+						rAddress = rAddress,
+						fUser = sipUser(name = fName),
+						password = fPassword
+					)
+				} finally {
+					socket.disconnect()
+					packet = null
+				}
+			}
+		} finally {
+			stop.set(true)
+		}
 	}
+	while (!stop.get()) {
+		//
+	}
+	executor.shutdown()
 }
