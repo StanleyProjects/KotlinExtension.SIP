@@ -1,6 +1,5 @@
 package sp.kx.sip.implementation.util
 
-import sp.kx.sip.foundation.entity.SipEnvironment
 import sp.kx.sip.foundation.entity.response.SipAbstractResponse
 import sp.kx.sip.foundation.entity.response.SipResponseTop
 
@@ -40,15 +39,6 @@ fun String.toSipResponse(): SipAbstractResponse {
         top = top,
         headers = headers
     )
-}
-
-fun SipAbstractResponse.getEnvironment(): SipEnvironment {
-    val split = headers["Via"]!!.split(" ")
-    check(split.size > 6) { "Size is ${split.size}!" }
-    val (_, version, protocol) = split[0].split("/").also {
-        check(it.size == 3)
-    }
-    return SipEnvironment(version = version, protocol = enumValueOf(protocol))
 }
 
 fun SipAbstractResponse.requireHeader(key: String): String {

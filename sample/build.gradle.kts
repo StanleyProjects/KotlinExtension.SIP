@@ -1,4 +1,8 @@
-repositories.mavenCentral()
+repositories {
+    mavenCentral()
+    maven("https://s01.oss.sonatype.org/content/repositories/snapshots")
+}
+
 
 plugins {
     id("application")
@@ -7,6 +11,7 @@ plugins {
 
 dependencies {
     implementation(project(":lib"))
+    implementation("com.github.kepocnhh:KotlinExtension.Functional:0.3-SNAPSHOT")
 }
 
 application {

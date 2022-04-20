@@ -1,4 +1,4 @@
-package sp.kx.sip.foundation.entity.request
+package sp.kx.sip.implementation.util
 
 import sp.kx.sip.foundation.entity.AuthorizationDigest
 import sp.kx.sip.foundation.entity.NetworkAddress
@@ -9,10 +9,10 @@ import sp.kx.sip.implementation.util.notation
 
 class SipRequestBuilder(
     method: String,
-    address: NetworkAddress,
+    uri: String,
     version: String
 ) {
-    private val top = "$method sip:${address.host} SIP/$version"
+    private val top = "$method $uri SIP/$version"
     private val headers = mutableMapOf<String, String>()
 
     fun addHeader(key: String, value: String): SipRequestBuilder {

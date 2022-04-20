@@ -12,11 +12,6 @@ fun DatagramSocket.send(buffer: ByteArray) {
     send(DatagramPacket(buffer, 0, buffer.size))
 }
 
-infix fun DatagramSocket.send(data: String) {
-    println("\t-->\n$data")
-    send(data.toByteArray(Charsets.UTF_8))
-}
-
 fun DatagramSocket.receive(buffer: ByteArray): DatagramPacket {
     val result = DatagramPacket(buffer, 0 ,buffer.size)
     receive(result)
