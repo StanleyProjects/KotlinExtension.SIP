@@ -1,17 +1,31 @@
 package sp.kx.sip.implementation.util
 
-import sp.kx.sip.foundation.entity.SipEnvironment
-import sp.kx.sip.foundation.entity.request.SipRequest
+import sp.kx.sip.foundation.entity.NetworkAddress
+import sp.kx.sip.foundation.entity.SipAuthenticate
+import sp.kx.sip.foundation.entity.SipUser
+import sp.kx.sip.foundation.entity.Via
+import sp.kx.sip.foundation.entity.method.Register
 
-fun SipEnvironment.toRequestBody(type: SipRequest.Register): String {
-    TODO()
-//    return listOf(
-//        "${type.method} sip:$rHost SIP/$version",
-//        SipHeaderBuilder.via(environment = this, address = lAddress, branch = branch),
-//        SipHeaderBuilder.build(key = "Call-ID", value = callId),
-//        SipHeaderBuilder.build(key = "CSeq", value = "$number ${type.method}"),
-//        SipHeaderBuilder.from(user = user, host = rHost, tag = tag),
-//        SipHeaderBuilder.to(user = user, host = rHost),
-//        SipHeaderBuilder.contact(user = user, address = lAddress)
-//    ).joinToString(separator = "\r\n", postfix = "\r\n\r\n")
+fun Register.Request.build(
+    via: Via,
+    callId: String,
+    number: Int,
+    address: NetworkAddress,
+    user: SipUser,
+    authenticate: SipAuthenticate,
+    password: String
+): String {
+    return build(
+        via = via,
+        callId = callId,
+        number = number,
+        address = address,
+        user = user,
+        digest = authenticate.digest(
+            address = address,
+            method = Register.method,
+            user = user,
+            password = password
+        )
+    )
 }

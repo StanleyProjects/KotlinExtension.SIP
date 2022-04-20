@@ -1,5 +1,6 @@
 package sp.kx.sip.implementation.util
 
+import sp.kx.sip.foundation.entity.CommandSequence
 import sp.kx.sip.foundation.entity.Via
 import sp.kx.sip.implementation.entity.address
 
@@ -31,5 +32,19 @@ fun String.toVia(): Via {
         protocol = enumValueOf(protocol),
         address = address(host = host, port = port.toInt()),
         branch = branch
+    )
+}
+
+fun String.toCommandSequence(): CommandSequence {
+    val split = split(" ")
+    check(split.size == 2)
+    val number = split.first().let {
+        it.toIntOrNull() ?: error("Value \"$it\" is not a number!")
+    }
+    val method = split[1]
+    check(method.isNotEmpty())
+    return CommandSequence(
+        number = number,
+        method = method
     )
 }

@@ -42,8 +42,12 @@ fun SipRequestBuilder.to(user: SipUser, host: String): SipRequestBuilder {
     return addHeader(key = "To", value = "sip:${user.name}@$host")
 }
 
-fun SipRequestBuilder.from(user: SipUser, host: String, tag: String): SipRequestBuilder {
-    return addHeader(key = "From", value = "sip:${user.name}@$host;tag=$tag")
+//fun SipRequestBuilder.from(user: SipUser, host: String, tag: String): SipRequestBuilder {
+//    return addHeader(key = "From", value = "sip:${user.name}@$host;tag=$tag")
+//} // todo
+
+fun SipRequestBuilder.from(user: SipUser, host: String): SipRequestBuilder {
+    return addHeader(key = "From", value = "sip:${user.name}@$host")
 }
 
 fun SipRequestBuilder.contact(user: SipUser, address: NetworkAddress): SipRequestBuilder {

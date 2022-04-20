@@ -1,7 +1,9 @@
 package sp.kx.sip.implementation.util
 
 import sp.kx.sip.foundation.entity.AuthorizationDigest
+import sp.kx.sip.foundation.entity.NetworkAddress
 import sp.kx.sip.foundation.entity.SipAuthenticate
+import sp.kx.sip.foundation.entity.SipUser
 import java.security.MessageDigest
 
 fun String.toAuthenticate(): SipAuthenticate {
@@ -64,5 +66,19 @@ fun SipAuthenticate.digest(
             "$uDigest:$nonce:$mDigest".toByteArray(Charsets.UTF_8)
         ).toHexString(),
         uri = uri
+    )
+}
+
+fun SipAuthenticate.digest(
+    address: NetworkAddress,
+    method: String,
+    user: SipUser,
+    password: String
+): AuthorizationDigest {
+    return digest(
+        method = method,
+        name = user.name,
+        password = password,
+        uri = "sip:${address.notation()}"
     )
 }
