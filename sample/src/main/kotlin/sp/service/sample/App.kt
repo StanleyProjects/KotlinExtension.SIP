@@ -1,5 +1,8 @@
 package sp.service.sample
 
+import sp.kx.sip.entity.RFC3261
+import sp.kx.sip.entity.method.sipInviteMethod
+import sp.kx.sip.entity.method.sipRegisterMethod
 import sp.kx.sip.foundation.entity.NetworkAddress
 import sp.kx.sip.foundation.entity.SipUser
 import sp.kx.sip.foundation.entity.TransportProtocol
@@ -8,21 +11,19 @@ import sp.kx.sip.foundation.entity.method.Authenticate
 import sp.kx.sip.foundation.entity.method.Register
 import sp.kx.sip.implementation.entity.address
 import sp.kx.sip.implementation.entity.sipUser
-import sp.kx.sip.implementation.util.java.net.receive
-import sp.kx.sip.implementation.util.java.net.send
-import sp.kx.sip.implementation.util.notation
-import sp.kx.sip.implementation.util.requireHeader
-import sp.kx.sip.implementation.util.toAuthenticate
 import sp.kx.sip.implementation.util.build
 import sp.kx.sip.implementation.util.java.net.getHostAddress
-import java.net.DatagramPacket
+import sp.kx.sip.implementation.util.java.net.receive
+import sp.kx.sip.implementation.util.java.net.send
+import sp.kx.sip.implementation.util.requireHeader
+import sp.kx.sip.implementation.util.toAuthenticate
+import sp.kx.sip.util.RFC3261Util
+import sp.kx.sip.util.java.net.request
+import sp.kx.sip.util.sipEnvironment
+import sp.kx.sip.util.toVia
 import java.net.DatagramSocket
-import java.net.Inet4Address
 import java.net.InetAddress
-import java.net.NetworkInterface
 import java.util.UUID
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 private fun DatagramSocket.send(data: String) {
 	println("\t-->\n$data")
@@ -81,18 +82,48 @@ fun main(args: Array<String>) {
 		check(array.size == 2)
 		array[0] to array[1]
 	}
-	val rAddress = address(host = arguments["rh"]!!, port = arguments["rp"]!!.toInt())
-	val fName = arguments["fn"]!!
-	val fPassword = arguments["fp"]!!
-	val tName = arguments["tn"]!!
-//	val sServer = arguments["ss"]!!
-	AppEnvironment(
-		version = "2.0",
-		protocol = TransportProtocol.UDP
-	).run(
-		rAddress = rAddress,
-		fUser = sipUser(name = fName),
-		tUser = sipUser(name = tName),
-		password = fPassword
+	val rAddress = address(
+		host = arguments["rh"] ?: error("Remote host is unknown!"),
+		port = arguments["rp"]?.toInt() ?: error("Remote port is unknown!")
 	)
+	val fName = arguments["fn"] ?: error("From user name is unknown!")
+	val password = arguments["pw"] ?: error("From user password is unknown!")
+	val tName = arguments["tn"] ?: error("To user name is unknown!")
+//	val sServer = arguments["ss"]!!
+//	AppEnvironment(
+//		version = "2.0",
+//		protocol = TransportProtocol.UDP
+//	).run(
+//		rAddress = rAddress,
+//		fUser = sipUser(name = fName),
+//		tUser = sipUser(name = tName),
+//		password = fPassword
+//	)
+	val fUser = sipUser(name = fName)
+	val tUser = sipUser(name = tName)
+	DatagramSocket().use { socket ->
+		socket.soTimeout = 5_000
+		socket.connect(InetAddress.getByName(rAddress.host), rAddress.port)
+		val environment = socket.sipEnvironment(version = "2.0")
+		socket.request(
+			sipRegisterMethod(
+				via = environment.toVia(branch = RFC3261Util.newBranch()),
+				callId = UUID.randomUUID().toString(),
+				number = 1,
+				address = rAddress,
+				user = fUser
+			),
+			password = password
+		)
+		socket.request(
+			sipInviteMethod(
+				via = environment.toVia(branch = RFC3261Util.newBranch()),
+				callId = UUID.randomUUID().toString(),
+				number = 2,
+				address = rAddress,
+				fUser = fUser,
+				tUser = tUser
+			)
+		)
+	}
 }

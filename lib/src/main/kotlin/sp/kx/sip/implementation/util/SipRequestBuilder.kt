@@ -1,6 +1,7 @@
 package sp.kx.sip.implementation.util
 
 import sp.kx.sip.foundation.entity.AuthorizationDigest
+import sp.kx.sip.foundation.entity.CommandSequence
 import sp.kx.sip.foundation.entity.NetworkAddress
 import sp.kx.sip.foundation.entity.SipUser
 import sp.kx.sip.foundation.entity.TransportProtocol
@@ -36,6 +37,10 @@ fun SipRequestBuilder.via(version: String, protocol: TransportProtocol, address:
 
 fun SipRequestBuilder.by(value: Via): SipRequestBuilder {
     return via(version = value.version, protocol = value.protocol, address = value.address, branch = value.branch)
+}
+
+fun SipRequestBuilder.by(sequence: CommandSequence): SipRequestBuilder {
+    return addHeader(key = "CSeq", value = "${sequence.number} ${sequence.method}")
 }
 
 fun SipRequestBuilder.to(user: SipUser, host: String): SipRequestBuilder {
