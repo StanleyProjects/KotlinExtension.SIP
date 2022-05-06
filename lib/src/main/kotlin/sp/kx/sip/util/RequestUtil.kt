@@ -43,7 +43,7 @@ fun SipRegisterMethod.toBody(password: String, authenticate: SipAuthenticate): S
     }
 }
 
-fun SipInviteMethod.toBody(): String {
+fun SipInviteMethod.toBody(sdp: List<Pair<String, String>>): String {
     return SipRequestBuilder(
         method = cs.method,
         version = via.version,
@@ -54,5 +54,6 @@ fun SipInviteMethod.toBody(): String {
         by(cs)
         from(user = fUser, host = address.host)
         to(user = tUser, host = address.host)
+        setSDP(sdp)
     }
 }

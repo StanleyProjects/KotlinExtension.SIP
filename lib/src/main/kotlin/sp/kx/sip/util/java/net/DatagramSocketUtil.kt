@@ -1,11 +1,14 @@
 package sp.kx.sip.util.java.net
 
+import sp.kx.sip.entity.RFC8866
 import sp.kx.sip.entity.method.SipInviteMethod
 import sp.kx.sip.entity.method.SipMethod
 import sp.kx.sip.entity.method.SipRegisterMethod
 import sp.kx.sip.foundation.entity.SipAuthenticate
 import sp.kx.sip.foundation.entity.SipCode
 import sp.kx.sip.foundation.entity.response.SipAbstractResponse
+import sp.kx.sip.implementation.entity.address
+import sp.kx.sip.implementation.util.java.net.getHostAddress
 import sp.kx.sip.implementation.util.requireHeader
 import sp.kx.sip.implementation.util.toAuthenticate
 import sp.kx.sip.implementation.util.toCommandSequence
@@ -15,7 +18,10 @@ import sp.kx.sip.util.next
 import sp.kx.sip.util.toBody
 import java.net.DatagramPacket
 import java.net.DatagramSocket
+import java.net.Inet4Address
 import java.net.SocketTimeoutException
+import java.util.Random
+import kotlin.math.absoluteValue
 
 private val packet = DatagramPacket(ByteArray(0), 0)
 
@@ -72,7 +78,23 @@ fun DatagramSocket.request(
 }
 
 fun DatagramSocket.request(method: SipInviteMethod) {
-    send(method.toBody())
+    val sdpVersion = 0
+    val sdpSessionId = Random().nextInt().absoluteValue
+    val audio = DatagramSocket()
+    val aa = address(
+        host = (audio.localAddress as Inet4Address).hostAddress,
+        port = audio.localPort
+    )
+    println("audio: $aa")
+    val ci = RFC8866.getConnectionInformation(protocol = "IN", addressType = "IP4", host = getHostAddress())
+    val sd = RFC8866.getSessionDescription(originatorId = "-", sessionId = sdpSessionId, version = sdpVersion, connectionInformation = ci)
+    val sdp = listOf(
+        "v" to sdpVersion.toString(),
+        "o" to sd,
+        "c" to ci,
+        "m" to "audio ${audio.localPort} RTP/AVP 8"
+    )
+    send(method.toBody(sdp))
     var code: Int? = null
     while (true) {
         val data = try {

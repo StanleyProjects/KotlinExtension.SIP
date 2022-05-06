@@ -15,14 +15,30 @@ class SipRequestBuilder(
 ) {
     private val top = "$method $uri SIP/$version"
     private val headers = mutableMapOf<String, String>()
+    private var sdp: List<Pair<String, String>> = emptyList()
 
     fun addHeader(key: String, value: String): SipRequestBuilder {
         headers[key] = value
         return this
     }
 
+    fun setSDP(values: List<Pair<String, String>>): SipRequestBuilder {
+        sdp = values
+        return this
+    }
+
     fun build(): String {
-        return (listOf(top) + headers.map { (k, v) -> "$k: $v" }).joinToString(separator = "\r\n", postfix = "\r\n\r\n")
+        val sdp = sdp
+        if (sdp.isEmpty()) {
+            return (listOf(top) + headers.map { (k, v) -> "$k: $v" }).joinToString(separator = "\r\n", postfix = "\r\n\r\n")
+        }
+        val content = sdp.joinToString(separator = "\r\n") { (key, value) -> "$key=$value" }
+        val additional = mapOf(
+            "Content-Type" to "application/sdp",
+            "Content-Length" to (content.length + 2).toString()
+        )
+        return (listOf(top) + (headers + additional))
+            .joinToString(separator = "\r\n", postfix = "\r\n\r\n$content\r\n")
     }
 
     fun build(block: SipRequestBuilder.() -> Unit): String {
