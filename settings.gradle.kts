@@ -1,3 +1,3 @@
 rootProject.name = "KotlinExtension.SIP"
 
-include("lib", "sample")
+include("lib", "sample", "android")
