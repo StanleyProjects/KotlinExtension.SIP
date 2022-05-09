@@ -8,5 +8,5 @@ fun getHostAddress(): String {
         .flatMap { it.inetAddresses.toList() }
         .filterIsInstance<Inet4Address>()
         .filterNot { it.isLoopbackAddress }
-        .single().hostAddress
+        .first().hostAddress
 }

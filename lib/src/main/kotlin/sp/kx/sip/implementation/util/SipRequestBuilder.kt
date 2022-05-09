@@ -37,7 +37,7 @@ class SipRequestBuilder(
             "Content-Type" to "application/sdp",
             "Content-Length" to (content.length + 2).toString()
         )
-        return (listOf(top) + (headers + additional))
+        return (listOf(top) + (headers + additional).map { (k, v) -> "$k: $v" })
             .joinToString(separator = "\r\n", postfix = "\r\n\r\n$content\r\n")
     }
 

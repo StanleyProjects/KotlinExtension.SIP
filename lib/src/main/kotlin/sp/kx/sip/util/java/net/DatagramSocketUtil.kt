@@ -6,6 +6,7 @@ import sp.kx.sip.entity.method.SipMethod
 import sp.kx.sip.entity.method.SipRegisterMethod
 import sp.kx.sip.foundation.entity.SipAuthenticate
 import sp.kx.sip.foundation.entity.SipCode
+import sp.kx.sip.foundation.entity.method.check
 import sp.kx.sip.foundation.entity.response.SipAbstractResponse
 import sp.kx.sip.implementation.entity.address
 import sp.kx.sip.implementation.util.java.net.getHostAddress
@@ -25,24 +26,18 @@ import kotlin.math.absoluteValue
 
 private val packet = DatagramPacket(ByteArray(0), 0)
 
-private fun DatagramSocket.send(data: String) {
+fun DatagramSocket.send(data: String) {
     println("\t-->\n$data")
     packet.data = data.toByteArray(Charsets.UTF_8)
     send(packet)
 }
 
-private fun DatagramSocket.receive(): String {
+fun DatagramSocket.receive(): String {
     packet.data = ByteArray(1024)
     receive(packet)
     val result = String(packet.data, Charsets.UTF_8)
     println("\t<--\n$result")
     return result
-}
-
-private fun SipMethod.check(response: SipAbstractResponse) {
-    check(response.requireHeader("Via").toVia() == via)
-    check(response.requireHeader("CSeq").toCommandSequence() == cs)
-    check(response.requireHeader("Call-ID") == callId)
 }
 
 private fun DatagramSocket.request(
@@ -82,17 +77,17 @@ fun DatagramSocket.request(method: SipInviteMethod) {
     val sdpSessionId = Random().nextInt().absoluteValue
     val audio = DatagramSocket()
     val aa = address(
-        host = (audio.localAddress as Inet4Address).hostAddress,
+        host = audio.localAddress.hostName,
         port = audio.localPort
     )
     println("audio: $aa")
-    val ci = RFC8866.getConnectionInformation(protocol = "IN", addressType = "IP4", host = getHostAddress())
+    val ci = RFC8866.getConnectionInformation(protocol = "IN", addressType = "IP4", host = aa.host)
     val sd = RFC8866.getSessionDescription(originatorId = "-", sessionId = sdpSessionId, version = sdpVersion, connectionInformation = ci)
     val sdp = listOf(
         "v" to sdpVersion.toString(),
         "o" to sd,
         "c" to ci,
-        "m" to "audio ${audio.localPort} RTP/AVP 8"
+        "m" to "audio ${aa.port} RTP/AVP 8"
     )
     send(method.toBody(sdp))
     var code: Int? = null
@@ -119,6 +114,41 @@ fun DatagramSocket.request(method: SipInviteMethod) {
             SipCode.Ringing -> {
                 // ignored
             }
+            SipCode.Unavailable -> return
+            SipCode.Busy -> return
+            else -> error("Code ${response.top.code} is not supported!")
+        }
+    }
+}
+
+fun DatagramSocket.request(method: SipInviteMethod, onCode: (Int) -> Unit) {
+    send(method.toBody(emptyList()))
+    var code: Int? = null
+    while (true) {
+        val data = try {
+            println("try receive...")
+            receive()
+        } catch (e: Throwable) {
+            when (code) {
+                SipCode.Ringing -> {
+                    if (e is SocketTimeoutException) continue
+                    throw e
+                }
+                else -> throw e
+            }
+        }
+        val response = data.toSipResponse()
+        method.check(response)
+        code = response.top.code
+        onCode(response.top.code)
+        when (response.top.code) {
+            SipCode.Trying -> {
+                // ignored
+            }
+            SipCode.Ringing -> {
+                // ignored
+            }
+            SipCode.Unavailable -> return
             SipCode.Busy -> return
             else -> error("Code ${response.top.code} is not supported!")
         }

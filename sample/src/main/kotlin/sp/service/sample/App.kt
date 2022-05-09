@@ -119,7 +119,7 @@ fun main(args: Array<String>) {
 			sipInviteMethod(
 				via = environment.toVia(branch = RFC3261Util.newBranch()),
 				callId = UUID.randomUUID().toString(),
-				number = 2,
+				number = 3,
 				address = rAddress,
 				fUser = fUser,
 				tUser = tUser

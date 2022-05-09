@@ -21,6 +21,8 @@ object SipCode {
      */
     const val Unauthorized = 401
 
+    const val Unavailable = 480
+
     /**
      * https://datatracker.ietf.org/doc/html/rfc3261#section-21.4.24
      */
